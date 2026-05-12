@@ -108,9 +108,8 @@ def find_footer_line(binary_img):
 
 
 # =========================================================
-# 处理单张图片
+# 处理单张图片的页眉和页脚
 # =========================================================
-
 def process_header_footer_crop(input_path, output_path):
 
     print(f"处理: {input_path}")
@@ -210,9 +209,8 @@ def process_header_footer_crop(input_path, output_path):
 
 
 # =========================================================
-# 处理目录
+# 处理页眉页脚目录
 # =========================================================
-
 def process_header_footer_directory(
     input_dir,
     output_dir,
@@ -265,6 +263,203 @@ def process_header_footer_directory(
                 input_path,
                 output_path
             )
+
+        except Exception as e:
+
+            print(f"处理失败: {filename} -> {e}")
+
+            failed_files.append(filename)
+
+
+# =========================================================
+# 计算一列中最长的连续黑色像素段长度
+# =========================================================
+def max_consecutive_black_col(col):
+    """计算一列中最长的连续黑色像素段长度"""
+    max_len, cur = 0, 0
+    for px in col:
+        if px == 0:
+            cur += 1
+            max_len = max(max_len, cur)
+        else:
+            cur = 0
+    return max_len
+
+
+# =========================================================
+# 查找分栏竖线
+# =========================================================
+def find_column_dividers(binary_img):
+    """
+    自左向右扫描全图，找到所有竖向分栏线。
+
+    判断标准：该列最长连续黑色像素段超过图片高度的 90%。
+    将相邻列（间距 <= 3px）合并为一组，返回每组右边界 x 坐标列表。
+    """
+
+    h, w = binary_img.shape
+    threshold = h * 0.9
+
+    candidates = []
+
+    for x in range(w):
+        if max_consecutive_black_col(binary_img[:, x]) > threshold:
+            candidates.append(x)
+
+    if not candidates:
+        return []
+
+    # 将相邻列合并成竖线组
+    groups = []
+    group = [candidates[0]]
+
+    for x in candidates[1:]:
+        if x - group[-1] <= 3:
+            group.append(x)
+        else:
+            groups.append(group)
+            group = [x]
+
+    groups.append(group)
+
+    # 每组取右边界 x 坐标
+    return [g[-1] for g in groups]
+
+
+# =========================================================
+# 对单张图片进行分栏并保存
+# =========================================================
+def split_columns_crop(input_path, output_dir):
+
+    print(f"处理: {input_path}")
+
+    # =====================================================
+    # 读取图片（支持中文路径）
+    # =====================================================
+
+    img = cv2.imdecode(
+        np.fromfile(input_path, dtype=np.uint8),
+        cv2.IMREAD_COLOR
+    )
+
+    if img is None:
+        raise Exception("无法读取图片")
+
+    h, w = img.shape[:2]
+
+    # =====================================================
+    # 灰度化 + 自适应二值化
+    # =====================================================
+
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    binary = cv2.adaptiveThreshold(
+        gray,
+        255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY,
+        25,
+        15
+    )
+
+    # =====================================================
+    # 查找分栏竖线
+    # =====================================================
+
+    dividers = find_column_dividers(binary)
+
+    if len(dividers) != 2:
+        raise Exception(f"预期找到2条分栏线，实际找到{len(dividers)}条")
+
+    x1, x2 = dividers
+
+    # =====================================================
+    # 按竖线位置切出三栏
+    # 竖线本身（宽约2px）不纳入任何一栏
+    # =====================================================
+
+    regions = [
+        (0,      x1 - 1),   # 第一栏：竖线1左侧
+        (x1 + 1, x2 - 1),   # 第二栏：两竖线之间
+        (x2 + 1, w - 1),    # 第三栏：竖线2右侧
+    ]
+
+    stem = os.path.splitext(os.path.basename(input_path))[0]
+    ext  = os.path.splitext(input_path)[1]
+
+    for i, (left, right) in enumerate(regions, start=1):
+
+        col_img = img[:, left:right + 1]
+
+        out_path = os.path.join(output_dir, f"{stem}_{i:02d}{ext}")
+
+        success, encoded = cv2.imencode(ext, col_img)
+
+        if not success:
+            raise Exception(f"保存第{i}栏失败")
+
+        encoded.tofile(out_path)
+
+        print(f"  保存: {out_path}")
+
+
+# =========================================================
+# 对目录内所有图片进行分栏处理
+# =========================================================
+def split_columns_directory(
+    input_dir,
+    output_dir,
+    prefix,
+    start_num,
+    end_num,
+    failed_files
+):
+
+    pattern = re.compile(
+        rf"{prefix}_(\d+)\.png"
+    )
+
+    for filename in sorted(os.listdir(input_dir)):
+
+        match = pattern.match(filename)
+
+        if not match:
+            continue
+
+        num = int(match.group(1))
+
+        # =================================================
+        # 只处理指定范围
+        # =================================================
+
+        if num < start_num or num > end_num:
+            continue
+
+        input_path = os.path.join(input_dir, filename)
+
+        stem = os.path.splitext(filename)[0]
+        ext  = os.path.splitext(filename)[1]
+
+        # =================================================
+        # 三个分栏输出文件都已存在则跳过
+        # =================================================
+
+        all_exist = all(
+            os.path.exists(os.path.join(output_dir, f"{stem}_{i:02d}{ext}"))
+            for i in range(1, 4)
+        )
+
+        if all_exist:
+            print(f"跳过已存在文件: {filename}")
+            continue
+
+        # =================================================
+        # 开始处理
+        # =================================================
+
+        try:
+
+            split_columns_crop(input_path, output_dir)
 
         except Exception as e:
 

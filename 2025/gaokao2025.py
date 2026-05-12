@@ -2,7 +2,8 @@ import os
 import requests
 from PIL import Image
 from time import sleep
-from utils.utils import process_header_footer_directory
+from utils.utils import process_header_footer_directory, split_columns_directory
+
 
 # 所有原始和处理后的文件都放在这个根目录下
 ROOT_PIC_DIR = "C:\\_temp\\高考"
@@ -228,6 +229,64 @@ print("无法处理的文件:")
 if failed_files:
 
     for filename in failed_files:
+        print(filename)
+
+else:
+
+    print("无")
+
+
+# =========================
+# 分栏处理
+# =========================
+SPLIT_ROOT_DIR = "04.split.column"
+
+SPLIT_HISTORY_DIR = os.path.join(ROOT_PIC_DIR, SPLIT_ROOT_DIR, "history")
+SPLIT_PHYSICS_DIR = os.path.join(ROOT_PIC_DIR, SPLIT_ROOT_DIR, "physics")
+
+os.makedirs(SPLIT_HISTORY_DIR, exist_ok=True)
+os.makedirs(SPLIT_PHYSICS_DIR, exist_ok=True)
+
+# 记录处理失败的文件
+split_failed_files = []
+
+print("04. 开始分栏处理...")
+print("=========================\n\n")
+
+# =========================================================
+# 开始处理：历史类
+# =========================================================
+split_columns_directory(
+    CROP_HISTORY_DIR,
+    SPLIT_HISTORY_DIR,
+    "history_2025",
+    5,
+    138,
+    split_failed_files
+)
+
+# =========================================================
+# 开始处理：物理类
+# =========================================================
+split_columns_directory(
+    CROP_PHYSICS_DIR,
+    SPLIT_PHYSICS_DIR,
+    "physics_2025",
+    5,
+    230,
+    split_failed_files
+)
+
+# =========================================================
+# 输出失败文件
+# =========================================================
+
+print()
+print("分栏无法处理的文件:")
+
+if split_failed_files:
+
+    for filename in split_failed_files:
         print(filename)
 
 else:
