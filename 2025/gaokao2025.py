@@ -4,15 +4,18 @@ from PIL import Image
 from time import sleep
 from utils.utils import process_header_footer_directory
 
+# 所有原始和处理后的文件都放在这个根目录下
+ROOT_PIC_DIR = "C:\\_temp\\高考"
+
 # 保存目录
 SAVE_DIR = "01.raw.gif"
 
 # 创建目录
-os.makedirs(SAVE_DIR, exist_ok=True)
+os.makedirs(os.path.join(ROOT_PIC_DIR, SAVE_DIR), exist_ok=True)
 
 # 在SAVE_DIR下分别创建"历史类"和"物理类"子目录
-HISTORY_DIR = os.path.join(SAVE_DIR, "history")
-PHYSICS_DIR = os.path.join(SAVE_DIR, "physics")
+HISTORY_DIR = os.path.join(ROOT_PIC_DIR, SAVE_DIR, "history")
+PHYSICS_DIR = os.path.join(ROOT_PIC_DIR, SAVE_DIR, "physics")
 os.makedirs(HISTORY_DIR, exist_ok=True)
 os.makedirs(PHYSICS_DIR, exist_ok=True)
 
@@ -108,10 +111,10 @@ print("02. 开始转换 GIF 为 PNG...")
 print("=========================\n\n")
 
 # 创建目录
-os.makedirs(PNG_DIR, exist_ok=True)
+os.makedirs(os.path.join(ROOT_PIC_DIR, PNG_DIR), exist_ok=True)
 
-PNG_HISTORY_DIR = os.path.join(PNG_DIR, "history")
-PNG_PHYSICS_DIR = os.path.join(PNG_DIR, "physics")
+PNG_HISTORY_DIR = os.path.join(ROOT_PIC_DIR, PNG_DIR, "history")
+PNG_PHYSICS_DIR = os.path.join(ROOT_PIC_DIR, PNG_DIR, "physics")
 os.makedirs(PNG_HISTORY_DIR, exist_ok=True)
 os.makedirs(PNG_PHYSICS_DIR, exist_ok=True)
 
@@ -173,8 +176,8 @@ for gif_filename in os.listdir(PHYSICS_DIR):
 # =========================
 CROP_ROOT_DIR = "03.no.header.footer"
 
-CROP_HISTORY_DIR = os.path.join(CROP_ROOT_DIR, "history")
-CROP_PHYSICS_DIR = os.path.join(CROP_ROOT_DIR, "physics")
+CROP_HISTORY_DIR = os.path.join(ROOT_PIC_DIR, CROP_ROOT_DIR, "history")
+CROP_PHYSICS_DIR = os.path.join(ROOT_PIC_DIR, CROP_ROOT_DIR, "physics")
 
 os.makedirs(CROP_HISTORY_DIR, exist_ok=True)
 os.makedirs(CROP_PHYSICS_DIR, exist_ok=True)
