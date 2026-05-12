@@ -2,9 +2,7 @@ import os
 import requests
 from PIL import Image
 from time import sleep
-import cv2
-import numpy as np
-import re
+from utils.utils import process_header_footer_directory
 
 # 保存目录
 SAVE_DIR = "01.raw.gif"
@@ -30,6 +28,11 @@ headers = {
 # 总页数
 TOTAL_PAGES_HISTORY = 140
 TOTAL_PAGES_PHYSICS = 232
+
+print("01. 开始下载...")
+print(f"历史类总页数: {TOTAL_PAGES_HISTORY}")
+print(f"物理类总页数: {TOTAL_PAGES_PHYSICS}")
+print("=========================\n\n")
 
 # 下载历史类
 for i in range(1, TOTAL_PAGES_HISTORY + 1):
@@ -101,6 +104,9 @@ for i in range(1, TOTAL_PAGES_PHYSICS + 1):
 
 PNG_DIR = "02.png.format"
 
+print("02. 开始转换 GIF 为 PNG...")
+print("=========================\n\n")
+
 # 创建目录
 os.makedirs(PNG_DIR, exist_ok=True)
 
@@ -159,6 +165,9 @@ for gif_filename in os.listdir(PHYSICS_DIR):
     except Exception as e:
         print(f"转换 {gif_filename} 时出错: {e}")
 
+
+
+
 # =========================
 # 去页眉和页脚
 # =========================
@@ -173,303 +182,51 @@ os.makedirs(CROP_PHYSICS_DIR, exist_ok=True)
 # 记录处理失败的文件
 failed_files = []
 
-# =========================
-# 检测长横线
-# =========================
-def detect_horizontal_lines(binary_img):
-    h, w = binary_img.shape
 
-    candidate_lines = []
 
-    for y in range(h):
-        row = binary_img[y]
+print("03. 开始去页眉页脚...")
+print("=========================\n\n")
 
-        black_pixels = np.sum(row == 0)
+# =========================================================
+# 开始处理：历史类
+# =========================================================
 
-        # 长横线判断
-        if black_pixels > w * 0.30:
-            candidate_lines.append(y)
-
-    # 合并邻近横线
-    merged = []
-
-    if candidate_lines:
-        start = candidate_lines[0]
-        prev = candidate_lines[0]
-
-        for y in candidate_lines[1:]:
-            if y - prev <= 3:
-                prev = y
-            else:
-                merged.append((start + prev) // 2)
-                start = y
-                prev = y
-
-        merged.append((start + prev) // 2)
-
-    return merged
-
-# =========================
-# 检测三栏结构
-# =========================
-def has_three_columns(binary_region):
-    h, w = binary_region.shape
-
-    projection = np.sum(binary_region == 0, axis=0)
-
-    # 平滑
-    kernel = np.ones(15) / 15
-    projection = np.convolve(projection, kernel, mode="same")
-
-    threshold = np.max(projection) * 0.35
-
-    mask = projection > threshold
-
-    segments = []
-
-    in_seg = False
-    start = 0
-
-    for i, val in enumerate(mask):
-        if val and not in_seg:
-            start = i
-            in_seg = True
-
-        elif not val and in_seg:
-            end = i
-
-            if end - start > w * 0.08:
-                segments.append((start, end))
-
-            in_seg = False
-
-    if in_seg:
-        end = w - 1
-
-        if end - start > w * 0.08:
-            segments.append((start, end))
-
-    return len(segments) >= 3
-
-# =========================
-# 找正文顶部
-# =========================
-def find_content_top(binary_img, lines):
-    h, w = binary_img.shape
-
-    for y in lines:
-        region_top = y + 10
-        region_bottom = min(h, y + int(h * 0.12))
-
-        if region_bottom <= region_top:
-            continue
-
-        region = binary_img[region_top:region_bottom, :]
-
-        if has_three_columns(region):
-            return y + 5
-
-    return None
-
-# =========================
-# 找正文底部
-# =========================
-def find_content_bottom(binary_img, lines, content_top):
-    h, w = binary_img.shape
-
-    bottom_lines = [
-        y for y in lines
-        if y > content_top + h * 0.3
-    ]
-
-    if not bottom_lines:
-        return h
-
-    for y in reversed(bottom_lines):
-        region_top = max(0, y - int(h * 0.08))
-        region_bottom = y - 5
-
-        if region_bottom <= region_top:
-            continue
-
-        region = binary_img[region_top:region_bottom, :]
-
-        if has_three_columns(region):
-            return y - 5
-
-    return h
-
-# =========================
-# 处理单张图片
-# =========================
-def process_crop(input_path, output_path):
-    print(f"处理: {input_path}")
-
-    img = cv2.imread(input_path)
-
-    if img is None:
-        raise Exception("无法读取图片")
-
-    h, w = img.shape[:2]
-
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-
-    # 二值化
-    binary = cv2.adaptiveThreshold(
-        gray,
-        255,
-        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY,
-        25,
-        15
-    )
-
-    lines = detect_horizontal_lines(binary)
-
-    if not lines:
-        raise Exception("未检测到横线")
-
-    content_top = find_content_top(binary, lines)
-
-    if content_top is None:
-        raise Exception("未找到正文顶部")
-
-    content_bottom = find_content_bottom(
-        binary,
-        lines,
-        content_top
-    )
-
-    if content_bottom <= content_top:
-        raise Exception("正文区域异常")
-
-    # 裁切
-    cropped = img[content_top:content_bottom, :]
-
-    # 安全检查
-    crop_h = content_bottom - content_top
-
-    if crop_h < h * 0.3:
-        raise Exception("裁切区域过小")
-
-    cv2.imwrite(output_path, cropped)
-
-    print(f"保存: {output_path}")
-
-# =========================
-# 处理目录
-# =========================
-def process_directory(
-    input_dir,
-    output_dir,
-    prefix,
-    start_num,
-    end_num
-):
-    pattern = re.compile(rf"{prefix}_(\d+)\.png")
-
-    for filename in os.listdir(input_dir):
-
-        match = pattern.match(filename)
-
-        if not match:
-            continue
-
-        num = int(match.group(1))
-
-        # 只处理指定范围
-        if num < start_num or num > end_num:
-            continue
-
-        input_path = os.path.join(input_dir, filename)
-        output_path = os.path.join(output_dir, filename)
-
-        # 已存在则跳过
-        if os.path.exists(output_path):
-            print(f"跳过已存在文件: {output_path}")
-            continue
-
-        try:
-            process_crop(input_path, output_path)
-
-        except Exception as e:
-            print(f"处理失败: {filename} -> {e}")
-            failed_files.append(filename)
-
-
-# =========================
-# 处理目录
-# =========================
-def process_directory(
-    input_dir,
-    output_dir,
-    prefix,
-    start_num,
-    end_num
-):
-    pattern = re.compile(rf"{prefix}_(\d+)\.png")
-
-    for filename in os.listdir(input_dir):
-
-        match = pattern.match(filename)
-
-        if not match:
-            continue
-
-        num = int(match.group(1))
-
-        # 只处理指定范围
-        if num < start_num or num > end_num:
-            continue
-
-        input_path = os.path.join(input_dir, filename)
-        output_path = os.path.join(output_dir, filename)
-
-        # 已存在则跳过
-        if os.path.exists(output_path):
-            print(f"跳过已存在文件: {output_path}")
-            continue
-
-        try:
-            process_crop(input_path, output_path)
-
-        except Exception as e:
-            print(f"处理失败: {filename} -> {e}")
-            failed_files.append(filename)
-
-# =========================
-# 开始处理
-# =========================
-
-# 历史类
-process_directory(
+process_header_footer_directory(
     PNG_HISTORY_DIR,
     CROP_HISTORY_DIR,
-    "历史类招生2025",
+    "history_2025",
     5,
-    138
+    138,
+    failed_files
 )
 
-# 物理类
-process_directory(
+
+# =========================================================
+# 开始处理：物理类
+# =========================================================
+
+process_header_footer_directory(
     PNG_PHYSICS_DIR,
     CROP_PHYSICS_DIR,
-    "物理类招生2025",
+    "physics_2025",
     5,
-    230
+    230,
+    failed_files
 )
 
-# =========================
-# 输出失败文件
-# =========================
 
-print("\n========================")
-print("处理失败文件")
-print("========================")
+# =========================================================
+# 输出失败文件
+# =========================================================
+
+print()
+print("无法处理的文件:")
 
 if failed_files:
-    for f in failed_files:
-        print(f)
+
+    for filename in failed_files:
+        print(filename)
 
 else:
+
     print("无")
