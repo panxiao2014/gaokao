@@ -2,7 +2,7 @@ import os
 import requests
 from PIL import Image
 from time import sleep
-from utils.utils import process_header_footer_directory, split_columns_directory
+from utils.utils import process_header_footer_directory, split_columns_directory, ocr_process
 
 
 # 所有原始和处理后的文件都放在这个根目录下
@@ -280,16 +280,53 @@ split_columns_directory(
 # =========================================================
 # 输出失败文件
 # =========================================================
-
-print()
 print("分栏无法处理的文件:")
 
 if split_failed_files:
-
     for filename in split_failed_files:
         print(filename)
 
 else:
-
     print("无")
 
+
+# ============================================
+# OCR处理,使用Paddle OCR云服务
+# ============================================
+OCR_ROOT_DIR = "05.ocr.result"
+
+OCR_HISTORY_DIR = os.path.join(ROOT_PIC_DIR, OCR_ROOT_DIR, "history")
+OCR_PHYSICS_DIR = os.path.join(ROOT_PIC_DIR, OCR_ROOT_DIR, "physics")
+
+os.makedirs(OCR_HISTORY_DIR, exist_ok=True)
+os.makedirs(OCR_PHYSICS_DIR, exist_ok=True)
+
+# 记录处理失败的文件
+ocr_failed_files = []
+
+print("05. 开始OCR处理...")
+print("=========================\n\n")
+
+ocr_process(
+    SPLIT_HISTORY_DIR,
+    OCR_HISTORY_DIR,
+    ocr_failed_files
+)
+
+ocr_process(
+    SPLIT_PHYSICS_DIR,
+    OCR_PHYSICS_DIR,
+    ocr_failed_files
+)
+
+# =========================================================
+# 输出失败文件
+# =========================================================
+print("OCR无法处理的文件:")
+
+if ocr_failed_files:
+    for filename in ocr_failed_files:
+        print(filename)
+
+else:
+    print("无")

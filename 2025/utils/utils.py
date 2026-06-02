@@ -2,6 +2,10 @@ import cv2
 import numpy as np
 import re
 import os
+import json
+import requests
+import sys
+import time
 
 def max_consecutive_black(row):
     """计算一行中最长的连续黑色像素段长度"""
@@ -469,48 +473,115 @@ def split_columns_directory(
             failed_files.append(filename)
 
 
-# =========================================================
-# 对单张图片进行去水印处理
-# =========================================================
-def remove_watermark_crop(input_path, output_path):
-    """
-    去除"招生考试报"灰色水印。
 
-    原理：经过前面步骤（步骤03、04）强制PNG无损保存后，
-    图片中像素灰度值分布在两个区间：
-      - 正文文字（含抗锯齿边缘）：灰度 0 ~ 99
-      - 水印笔画 + 背景过渡：灰度 100 ~ 254
-      - 背景白色：灰度 255
 
-    将灰度值在 [100, 254] 区间的像素替换为白色，
-    可在完整保留正文核心笔画（<100）的前提下消除水印。
-    正文笔画的核心像素灰度 < 50，100以上全部为水印或背景过渡。
-    """
 
-    print(f"处理: {input_path}")
+#调用paddleocr API接口进行ocr识别，并保存结果
+JOB_URL = "https://paddleocr.aistudio-app.com/api/v2/ocr/jobs"
+MODEL = "PP-OCRv5"
+with open("token/paddle.txt", "r") as f:
+    TOKEN = f.read().strip()
 
-    img = cv2.imdecode(
-        np.fromfile(input_path, dtype=np.uint8),
-        cv2.IMREAD_COLOR
-    )
+headers = {
+    "Authorization": f"bearer {TOKEN}",
+}
 
-    if img is None:
-        raise Exception("无法读取图片")
+optional_payload = {
+    "markdownIgnoreLabels": [],
+    "useDocOrientationClassify": False,
+    "useDocUnwarping": False,
+    "useTextlineOrientation": False,
+    "textDetLimitType": "min",
+    "textDetLimitSideLen": 64,
+    "textDetThresh": 0.3,
+    "textDetBoxThresh": 0.52,
+    "textDetUnclipRatio": 1.5,
+    "textRecScoreThresh": 0,
+    "parseLanguage": "default"
+}
 
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+post_data = {
+    "model": MODEL,
+    "optionalPayload": json.dumps(optional_payload)
+}
 
-    # 将灰度值在 [100, 254] 区间的像素替换为白色
-    watermark_mask = (gray >= 100) & (gray <= 254)
-    img[watermark_mask] = [255, 255, 255]
+def ocr_process(
+    input_dir,
+    output_dir,
+    failed_files
+):
 
-    # 强制以PNG格式保存
-    out_path_png = os.path.splitext(output_path)[0] + ".png"
+    for filename in sorted(os.listdir(input_dir)):
 
-    success, encoded_img = cv2.imencode(".png", img)
+        input_path = os.path.join(input_dir, filename)
 
-    if not success:
-        raise Exception("保存失败")
+        #提取filename中的文件名部分，并生成同名的json文件名：
+        stem = os.path.splitext(filename)[0]
+        json_filename = stem + ".json"
+        output_path = os.path.join(output_dir, json_filename)
 
-    encoded_img.tofile(out_path_png)
+        print(f"处理: {input_path}")
 
-    print(f"保存: {out_path_png}")
+        # =================================================
+        # 已存在则跳过
+        # =================================================
+        if os.path.exists(output_path):
+
+            print(f"跳过已存在文件: {output_path}")
+
+            continue
+
+        # =================================================
+        # 开始处理
+        # =================================================
+        with open(input_path, "rb") as f:
+            files = {"file": f}
+            job_response = requests.post(JOB_URL, headers=headers, data=post_data, files=files)
+
+        if job_response.status_code != 200:
+            print(f"提交失败: {filename} -> {job_response.text}")
+            failed_files.append(filename)
+            continue
+
+        assert job_response.status_code == 200
+        jobId = job_response.json()["data"]["jobId"]
+
+        jsonl_url = ""
+        while True:
+            job_result_response = requests.get(f"{JOB_URL}/{jobId}", headers=headers)
+            if job_result_response.status_code != 200:
+                print(f"查询结果失败: {filename} -> {job_result_response.text}")
+                failed_files.append(filename)
+                break
+
+            state = job_result_response.json()["data"]["state"]
+            if state == 'pending':
+                print("The current status of the job is pending")
+            elif state == 'running':
+                try:
+                    total_pages = job_result_response.json()['data']['extractProgress']['totalPages']
+                    extracted_pages = job_result_response.json()['data']['extractProgress']['extractedPages']
+                except KeyError:
+                    print("The current status of the job is running...")
+            elif state == 'done':
+                jsonl_url = job_result_response.json()['data']['resultUrl']['jsonUrl']
+                break
+            elif state == "failed":
+                error_msg = job_result_response.json()['data']['errorMsg']
+                print(f"Job failed, failure reason：{error_msg}")
+                failed_files.append(filename)
+                break
+
+            time.sleep(5)
+
+        if jsonl_url:
+            jsonl_response = requests.get(jsonl_url)
+            if jsonl_response.status_code != 200:
+                print(f"下载结果失败: {filename} -> {jsonl_response.text}")
+                failed_files.append(filename)
+                continue
+
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write(jsonl_response.text)
+
+            print(f"保存: {output_path}")
