@@ -2,7 +2,7 @@ import os
 import requests
 from PIL import Image
 from time import sleep
-from utils.utils import process_header_footer_directory, split_columns_directory, ocr_process
+from utils.utils import process_header_footer_directory, split_columns_directory, ocr_process, single_json_process
 
 
 # 所有原始和处理后的文件都放在这个根目录下
@@ -330,3 +330,18 @@ if ocr_failed_files:
 
 else:
     print("无")
+
+
+# ============================================
+# 合并json文件
+# ============================================
+SINGLE_JSON_ROOT_DIR = "06.single.result"
+
+SINGLE_JSON_HISTORY_DIR = os.path.join(ROOT_PIC_DIR, SINGLE_JSON_ROOT_DIR, "history")
+SINGLE_JSON_PHYSICS_DIR = os.path.join(ROOT_PIC_DIR, SINGLE_JSON_ROOT_DIR, "physics")
+
+os.makedirs(SINGLE_JSON_HISTORY_DIR, exist_ok=True)
+os.makedirs(SINGLE_JSON_PHYSICS_DIR, exist_ok=True)
+
+single_json_process(OCR_HISTORY_DIR, SINGLE_JSON_HISTORY_DIR, "history.json")
+single_json_process(OCR_PHYSICS_DIR, SINGLE_JSON_PHYSICS_DIR, "physics.json")

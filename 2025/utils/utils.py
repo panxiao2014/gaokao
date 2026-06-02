@@ -585,3 +585,52 @@ def ocr_process(
                 f.write(jsonl_response.text)
 
             print(f"保存: {output_path}")
+
+
+
+def single_json_process(
+    input_path,
+    output_path,
+    markdown_filename
+):
+    #如果markdown_filename已经存在于output_path中，则跳过
+    if os.path.exists(os.path.join(output_path, markdown_filename)):
+        print(f"跳过已存在文件: {markdown_filename}")
+        return
+    
+    #读取所有json文件中的"rec_texts"部分。该字段值为一个数组，每个元素是识别到的文本行。将所有文件中的文本行合并成一个数组，保存在markdown_filename的"rec_texts"字段中。最终生成一个新的json文件，包含一个字段"rec_texts"，其值为合并后的文本行数组。
+    all_rec_texts = []
+    for filename in sorted(os.listdir(input_path)):
+
+        if not filename.endswith(".json"):
+            continue
+
+        input_path_full = os.path.join(input_path, filename)
+
+        with open(input_path_full, "r", encoding="utf-8") as f:
+            jsonl_data = f.read()
+
+        # 解析jsonl数据并提取rec_texts
+        try:
+            data = json.loads(jsonl_data)
+
+            #找到json数据中的"rec_texts"字段，并将其值（一个数组）添加到all_rec_texts中
+            ocr_results = data.get('result', {}).get('ocrResults', [])
+            if ocr_results:
+                pruned_result = ocr_results[0].get('prunedResult', {})
+                rec_texts = pruned_result.get('rec_texts')
+                if rec_texts is not None:
+                    all_rec_texts.extend(rec_texts)
+                else:
+                    print(f"文件 {filename} 中找不到 rec_texts 字段")
+            else:
+                print(f"文件 {filename} 中没有 ocrResults")
+        except json.JSONDecodeError:
+            print(f"无法解析文件: {filename}")
+
+    # 保存合并后的文本行到markdown_filename
+    output_markdown_path = os.path.join(output_path, markdown_filename)
+    with open(output_markdown_path, "w", encoding="utf-8") as f:
+        json.dump({"rec_texts": all_rec_texts}, f, ensure_ascii=False, indent=4)
+
+    print(f"保存: {output_markdown_path}")
