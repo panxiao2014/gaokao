@@ -196,16 +196,17 @@ def process_header_footer_crop(input_path, output_path):
     # 保存（支持中文路径）
     # =====================================================
 
-    ext = os.path.splitext(output_path)[1]
+    # 强制以PNG格式保存，确保无损，为后续去水印等步骤提供精确像素值
+    out_path_png = os.path.splitext(output_path)[0] + ".png"
 
-    success, encoded_img = cv2.imencode(ext, cropped)
+    success, encoded_img = cv2.imencode(".png", cropped)
 
     if not success:
         raise Exception("保存失败")
 
-    encoded_img.tofile(output_path)
+    encoded_img.tofile(out_path_png)
 
-    print(f"保存: {output_path}")
+    print(f"保存: {out_path_png}")
 
 
 # =========================================================
@@ -385,15 +386,15 @@ def split_columns_crop(input_path, output_dir):
     ]
 
     stem = os.path.splitext(os.path.basename(input_path))[0]
-    ext  = os.path.splitext(input_path)[1]
 
     for i, (left, right) in enumerate(regions, start=1):
 
         col_img = img[:, left:right + 1]
 
-        out_path = os.path.join(output_dir, f"{stem}_{i:02d}{ext}")
+        # 强制以PNG格式保存，确保无损
+        out_path = os.path.join(output_dir, f"{stem}_{i:02d}.png")
 
-        success, encoded = cv2.imencode(ext, col_img)
+        success, encoded = cv2.imencode(".png", col_img)
 
         if not success:
             raise Exception(f"保存第{i}栏失败")
@@ -466,3 +467,50 @@ def split_columns_directory(
             print(f"处理失败: {filename} -> {e}")
 
             failed_files.append(filename)
+
+
+# =========================================================
+# 对单张图片进行去水印处理
+# =========================================================
+def remove_watermark_crop(input_path, output_path):
+    """
+    去除"招生考试报"灰色水印。
+
+    原理：经过前面步骤（步骤03、04）强制PNG无损保存后，
+    图片中像素灰度值分布在两个区间：
+      - 正文文字（含抗锯齿边缘）：灰度 0 ~ 99
+      - 水印笔画 + 背景过渡：灰度 100 ~ 254
+      - 背景白色：灰度 255
+
+    将灰度值在 [100, 254] 区间的像素替换为白色，
+    可在完整保留正文核心笔画（<100）的前提下消除水印。
+    正文笔画的核心像素灰度 < 50，100以上全部为水印或背景过渡。
+    """
+
+    print(f"处理: {input_path}")
+
+    img = cv2.imdecode(
+        np.fromfile(input_path, dtype=np.uint8),
+        cv2.IMREAD_COLOR
+    )
+
+    if img is None:
+        raise Exception("无法读取图片")
+
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    # 将灰度值在 [100, 254] 区间的像素替换为白色
+    watermark_mask = (gray >= 100) & (gray <= 254)
+    img[watermark_mask] = [255, 255, 255]
+
+    # 强制以PNG格式保存
+    out_path_png = os.path.splitext(output_path)[0] + ".png"
+
+    success, encoded_img = cv2.imencode(".png", img)
+
+    if not success:
+        raise Exception("保存失败")
+
+    encoded_img.tofile(out_path_png)
+
+    print(f"保存: {out_path_png}")
