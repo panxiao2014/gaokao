@@ -634,3 +634,74 @@ def single_json_process(
         json.dump({"rec_texts": all_rec_texts}, f, ensure_ascii=False, indent=4)
 
     print(f"保存: {output_markdown_path}")
+
+
+
+def json_data_cleaning(
+    input_path,
+    output_path
+):
+    #找到input_path目录下的json文件并读取，该目录下应该只有一个json文件：
+    json_files = [f for f in os.listdir(input_path) if f.endswith(".json")]
+
+    if not json_files:
+        print(f"在 {input_path} 中未找到 JSON 文件")
+        return
+
+    if len(json_files) > 1:
+        print(f"在 {input_path} 中发现多个 JSON 文件，将处理第一个: {json_files[0]}")
+    
+    json_file = json_files[0]
+    input_json_path = os.path.join(input_path, json_file)
+
+    # 读取并清洗 JSON 数据
+    with open(input_json_path, "r", encoding="utf-8") as f:
+        original_data = json.load(f)
+
+    # 定义替换规则的二元组列表
+    replacement_rules = [
+        ("尘", "生"),
+        ("达致", "达到"),
+        ("师范尘", "师范生"),
+        ("男尘", "男生"),
+        ("备油", "备注"),
+        ("色自", "色盲"),
+        ("色直色", "色盲色弱"),
+        ("您色强", "色弱"),
+        ("色强", "色弱"),
+        ("（州校区）", "（广州校区）"),
+        ("动没", "动漫"),
+    ]
+
+    # 定义需要删除的元素列表（精确匹配）
+    elements_to_remove = [
+        "招生考试报",
+        "生考试报"
+    ]
+
+    # 深拷贝原始数据，避免修改原数据
+    cleaned_data = json.loads(json.dumps(original_data)) if isinstance(original_data, dict) else original_data
+
+    # 遍历并清理 rec_texts 数组
+    if "rec_texts" in cleaned_data:
+        cleaned_texts = []
+        for text in cleaned_data["rec_texts"]:
+            # 检查是否需要删除该元素（精确匹配）
+            if text in elements_to_remove:
+                continue  # 跳过该元素，不加入新数组
+            
+            # 对需要保留的文本进行替换操作
+            if isinstance(text, str):
+                for old_word, new_word in replacement_rules:
+                    text = text.replace(old_word, new_word)
+                cleaned_texts.append(text)
+            else:
+                cleaned_texts.append(text)
+        
+        cleaned_data["rec_texts"] = cleaned_texts
+    
+    # 保存清洗后的 JSON 数据
+    output_json_path = os.path.join(output_path, json_file)
+    with open(output_json_path, "w", encoding="utf-8") as f:
+        json.dump(cleaned_data, f, ensure_ascii=False, indent=4)
+        print(f"保存: {output_json_path}")
