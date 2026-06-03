@@ -367,4 +367,3 @@ json_data_cleaning(
     SINGLE_JSON_PHYSICS_DIR,
     JSON_CLEAN_PHYSICS_DIR
 )
-
