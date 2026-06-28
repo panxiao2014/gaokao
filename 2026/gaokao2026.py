@@ -6,7 +6,7 @@ from utils.utils import process_header_footer_directory, split_columns_directory
 
 
 # 所有原始和处理后的文件都放在这个根目录下
-ROOT_PIC_DIR = "C:\\_temp\\2026_高考_四川"
+ROOT_PIC_DIR = "/mnt/c/_temp/2026_高考_四川"
 
 # 保存目录
 SAVE_DIR = "01.raw.png"
