@@ -1,0 +1,7 @@
+[project]
+name = "gaokao"
+version = "0.1.0"
+description = "高考招生信息提取"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = []
